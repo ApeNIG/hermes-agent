@@ -19821,9 +19821,13 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     try:
         from tools.mcp_tool import discover_mcp_tools
         _loop = asyncio.get_running_loop()
-        await _loop.run_in_executor(None, discover_mcp_tools)
+        _mcp_tools = await _loop.run_in_executor(None, discover_mcp_tools)
+        if _mcp_tools:
+            logger.info("MCP startup: %d tool(s) registered", len(_mcp_tools))
+        else:
+            logger.warning("MCP startup: no tools registered (MCP-dependent cron jobs will fail)")
     except Exception as e:
-        logger.debug("MCP tool discovery failed: %s", e)
+        logger.warning("MCP startup: discovery failed: %s (MCP-dependent cron jobs will fail)", e)
 
     # Start the gateway
     success = await runner.start()

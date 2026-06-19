@@ -1715,12 +1715,19 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
         # register_mcp_servers(). Non-fatal on failure: a broken MCP server
         # shouldn't kill an otherwise-working cron job. See #4219.
         try:
-            from tools.mcp_tool import discover_mcp_tools
+            from tools.mcp_tool import discover_mcp_tools, has_mcp_servers_configured
             _mcp_tools = discover_mcp_tools()
+            _mcp_configured = has_mcp_servers_configured()
             if _mcp_tools:
                 logger.info(
                     "Job '%s': %d MCP tool(s) available",
                     job_id, len(_mcp_tools),
+                )
+            elif _mcp_configured:
+                logger.warning(
+                    "Job '%s': MCP servers configured but 0 tools registered — "
+                    "MCP-dependent tools will be unavailable",
+                    job_id,
                 )
         except Exception as _mcp_exc:
             logger.warning(

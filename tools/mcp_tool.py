@@ -3581,6 +3581,15 @@ def register_mcp_servers(servers: Dict[str, dict]) -> List[str]:
     return _existing_tool_names()
 
 
+def has_mcp_servers_configured() -> bool:
+    """Return True if any MCP servers are configured and enabled."""
+    servers = _load_mcp_config()
+    return any(
+        _parse_boolish(cfg.get("enabled", True), default=True)
+        for cfg in servers.values()
+    ) if servers else False
+
+
 def discover_mcp_tools() -> List[str]:
     """Entry point: load config, connect to MCP servers, register tools.
 
@@ -3594,13 +3603,15 @@ def discover_mcp_tools() -> List[str]:
         List of all registered MCP tool names.
     """
     if not _MCP_AVAILABLE:
-        logger.debug("MCP SDK not available -- skipping MCP tool discovery")
+        logger.warning("MCP SDK not available -- skipping MCP tool discovery")
         return []
 
     servers = _load_mcp_config()
     if not servers:
-        logger.debug("No MCP servers configured")
+        logger.warning("MCP: no servers in config (HERMES_HOME=%s)",
+                       os.environ.get("HERMES_HOME", "<unset>"))
         return []
+    logger.info("MCP: config loaded, %d server(s): %s", len(servers), list(servers.keys()))
 
     with _lock:
         new_server_names = [

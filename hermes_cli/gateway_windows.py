@@ -519,6 +519,28 @@ def _read_pyvenv_cfg(venv_dir: Path) -> dict[str, str]:
     return parsed
 
 
+def _expand_pth_files(site_packages: Path) -> list[str]:
+    """Parse .pth files in *site_packages* and return extra path entries.
+
+    Only plain relative/absolute path lines are returned. Lines starting
+    with ``import`` or ``#`` are skipped (they're executable hooks that
+    require the real site machinery).
+    """
+    extra: list[str] = []
+    for pth in site_packages.glob("*.pth"):
+        try:
+            for line in pth.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or line.startswith("import "):
+                    continue
+                candidate = site_packages / line
+                if candidate.is_dir():
+                    extra.append(str(candidate))
+        except OSError:
+            continue
+    return extra
+
+
 def _resolve_detached_python(python_exe: str) -> tuple[str, Path, list[str]]:
     """Return (windowed_python, venv_dir, extra_pythonpath) for detached runs.
 
@@ -539,7 +561,13 @@ def _resolve_detached_python(python_exe: str) -> tuple[str, Path, list[str]]:
         base_pythonw = Path(home) / "pythonw.exe"
         site_packages = venv_dir / "Lib" / "site-packages"
         if base_pythonw.exists() and site_packages.exists():
-            return (str(base_pythonw), venv_dir, [str(site_packages)])
+            extra = [str(site_packages)]
+            # .pth files are not processed when site-packages is added via
+            # PYTHONPATH (only site.py-discovered dirs get .pth expansion).
+            # Parse them manually so packages like pywin32 that rely on .pth
+            # path entries (win32/, win32/lib/, pywin32_system32/) are found.
+            extra.extend(_expand_pth_files(site_packages))
+            return (str(base_pythonw), venv_dir, extra)
 
     return (windowed, venv_dir, [])
 
@@ -587,6 +615,12 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
         "VIRTUAL_ENV": str(venv_dir),
     }
     _prepend_pythonpath(env_overlay, [project_root, *extra_pythonpath] if extra_pythonpath else [project_root])
+
+    # pywin32 DLLs (pywintypes*.dll etc.) live in site-packages/pywin32_system32/
+    # and must be on PATH for the `mcp` SDK to import successfully.
+    pywin32_dll_dir = venv_dir / "Lib" / "site-packages" / "pywin32_system32"
+    if pywin32_dll_dir.is_dir():
+        env_overlay["PATH"] = str(pywin32_dll_dir) + os.pathsep + os.environ.get("PATH", "")
     return argv, working_dir, env_overlay
 
 
